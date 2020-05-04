@@ -45,27 +45,28 @@ SW_CRA<- rbind(AZ_CRA,NM_CRA)
 # ----  
   
 # # load reprojected RPMS data and gridmet ----
-# rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/SWUS_RPMS_8419_WGS84.grd")
+ rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/SWUS_RPMS_8419_WGS84.grd")
 # precip<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/SWUS_gridmet_monthly_sum_precip_1979_2019.grd")
+ pet<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/SWUS_gridmet_monthly_sum_pet_1979_2019.grd")
 # 
- # levelplot((precip[[1]]), margin=FALSE)+
- #   layer(sp.polygons(states))
+  # levelplot((pet[[1]]), margin=FALSE)+
+  #   layer(sp.polygons(states))
 # 
 # # crop to common AZ/NM bounding box
 # # -116 to -102 lon, 37.5 to 30.5 lat
-#   e <- extent(-116,-102,30.5,37.5)
-#   rpmsSW <- crop(rpmsSW, e)
-#   precip<- crop(precip, e)
+   e <- extent(-116,-102,30.5,37.5)
+   rpmsSW <- crop(rpmsSW, e)
+   pet<- crop(pet, e)
 # # resmple GridMet to RPMS res
 #   # # clusterR parallel
-#   library(cluster)
-#      beginCluster(type="SOCK",n=4)
-#      ## 3 out of 8 cores
-#       precip <- resample(precip,rpmsSW[[1]],method='bilinear')
-#         ## Using cluster with 3 nodes
-#      endCluster()
+  library(cluster)
+     beginCluster(type="SOCK",n=6)
+     ## 3 out of 8 cores
+      pet <- resample(pet,rpmsSW[[1]],method='bilinear')
+        ## Using cluster with 3 nodes
+     endCluster()
 #      # save cropped raster
-#      writeRaster(precip, filename = "/scratch/crimmins/gridmet/update_Aug2019/processed/rpmsRes_AZNM_gridmet_monthly_sum_precip_1979_2019.grd", overwrite=TRUE)
+      writeRaster(pet, filename = "/scratch/crimmins/gridmet/update_Aug2019/processed/rpmsRes_AZNM_gridmet_monthly_sum_pet_1979_2019.grd", overwrite=TRUE)
   # rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/SWUS_RPMS_8419_WGS84.grd")
   #  e <- extent(-116,-102,30.5,37.5)
   # rpmsSW <- crop(rpmsSW, e)     
@@ -76,12 +77,69 @@ SW_CRA<- rbind(AZ_CRA,NM_CRA)
 # summary stats/diagnostics of rpms
 rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/AZNM_RPMS_8419_WGS84.grd")
 
+# basic stats
+library(cluster)
+beginCluster(n = 5)
+  rpmsSD<-calc(rpmsSW, fun=sd, na.rm=TRUE)
+  rpmsMean<-calc(rpmsSW, fun=mean, na.rm=TRUE)
+endCluster()
+
+levelplot((rpmwSW/rpmwMean)*100, margin=FALSE, par.settings = (PuOrTheme), at=seq(0, 150, 10), main="RPMS CoV")+
+  layer(sp.polygons(states))
+
 minYear<-(which.min(rpmsSW))+1983
  levels(minYear)=data.frame(ID=1984:2019, code=1984:2019)
 levelplot(minYear, par.settings = PuOrTheme, main="Year of Min RPMS") +
   layer(sp.polygons(states))   
+# indiv min year plots
+minFreq<-freq(minYear)
+
+minYrsStack<-list()
+for(i in 1:length(seq(1984,2019,1))){
+  temp<-(minYear==(i+1983))
+  temp[temp==0]<-NA
+  minYrsStack[i]<-temp
+  print(i)
+}
+minYrsStack<-stack(minYrsStack)
+  names(minYrsStack)<-seq(1984,2019,1)
+p0<-levelplot(minYrsStack, main="Extent of min-RPMS in each year (1984-2019)")+
+  layer(sp.polygons(states))
+# plot to png
+png("/home/crimmins/RProjects/RangeDrought/figs/minRPMS_by_year.png", width = 10, height = 8, units = "in", res = 300L)
+print(p0, newpage = FALSE)
+dev.off()  
+
+# lower quantile as drought metric
+beginCluster(n = 6)
+  q25 <- clusterR(x=rpmsSW,fun=calc,args=list(fun=function(x)quantile(x, .5, na.rm=TRUE)))
+endCluster()
+
+#temp<-rpmsSW-q25
+#temp<-stack(temp)
+#temp[temp>=0]<-NA  
+
+ q25YrsStack<-list()
+ for(i in 1:length(seq(1984,2019,1))){
+   temp<-(rpmsSW[[i]]-q25)
+   temp[temp>=0]<-NA
+   temp[temp<0]<-1
+   q25YrsStack[i]<-temp
+   print(i)
+ }
+ q25YrsStack<-stack(q25YrsStack)
+ names(q25YrsStack)<-seq(1984,2019,1) 
+  q25extent<-cellStats(q25YrsStack, sum)
+  plot(seq(1984,2019,1),q25extent, type="b", main="Extent of q50 drought conditions")
+  
+  p0<-levelplot(q25YrsStack, main="Extent of <q50-RPMS in each year (1984-2019)", colorkey=FALSE)+
+    layer(sp.polygons(states))
+  # plot to png
+  png("/home/crimmins/RProjects/RangeDrought/figs/q50RPMS_by_year.png", width = 10, height = 8, units = "in", res = 300L)
+  print(p0, newpage = FALSE)
+  dev.off()   
 #----
-# leaflet
+# leaflet ----
 library(rgdal)
 library(leaflet)
 library(leafem)
@@ -101,18 +159,21 @@ leafMap<-leaflet() %>% addTiles() %>%
               label=as.character(SW_CRA$CRA),
               labelOptions = labelOptions(direction = "auto"))
 saveWidget(leafMap, file="/home/crimmins/RProjects/RangeDrought/maps/min_RPMS_year.html", selfcontained = TRUE)
+# ----
 
 maxYear<-(which.max(rpmsSW))+1983
 levels(maxYear)=data.frame(ID=1984:2019, code=1984:2019)
 levelplot(maxYear, par.settings = PuOrTheme, main="Year of Max RPMS") +
   layer(sp.polygons(states))  
  
+# end diagnostic stats ----
+
 # load reprojected RPMS data and gridmet
 precip<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/rpmsRes_AZNM_gridmet_monthly_sum_precip_1979_2019.grd")
 rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/AZNM_RPMS_8419_WGS84.grd")
 
     
-# summarize precip data into 
+# summarize precip data into seasons
 # dates<-seq(as.Date("1979-01-01",format="%Y-%m-%d"),as.Date("2019-12-01",format="%Y-%m-%d"),
 #            by="month")
 # month<-as.data.frame(as.numeric(format(dates, "%m")))
