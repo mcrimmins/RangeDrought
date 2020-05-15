@@ -40,7 +40,7 @@ get_cv_error <- function(model.formula, data){
 
 # load and process grids ----
   # production
-  rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/AZNM_RPMS_8419_WGS84.grd")
+  #rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/AZNM_RPMS_8419_WGS84.grd")
   # monthly gridmet, orig res
   precip<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/SWUS_gridmet_monthly_sum_precip_1979_2019.grd")
   pet<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/SWUS_gridmet_monthly_sum_pet_1979_2019.grd")
@@ -51,10 +51,10 @@ get_cv_error <- function(model.formula, data){
   # nprecip<-crop(nClimPrecip, extent(precip))  
 
   # try out smoothed NDVI
-   # smNDVI<-stack("/scratch/crimmins/vhi/processed/ANNUAL_MAX_smNDVI_complete_1982-2019_SWUS.grd") 
-   # smNDVI<-resample(smNDVI, precip[[1]])
-   # smNDVI<-smNDVI[[3:38]]
-   # rpmsSW<-smNDVI      
+    smNDVI<-stack("/scratch/crimmins/vhi/processed/ANNUAL_MAX_smNDVI_complete_1982-2019_SWUS.grd") 
+    smNDVI<-resample(smNDVI, precip[[1]])
+    smNDVI<-smNDVI[[3:38]]
+    rpmsSW<-smNDVI      
 
   # create RPMS NA mask
   maskRPMS<-calc(rpmsSW, sum)
@@ -86,7 +86,7 @@ AZ_LRU<-spTransform(AZ_LRU, crs(AZ_CRA))
 
 # switch to land management unit
 #LMU<-SW_CRA
-LMU<-counties
+LMU<-AZ_LRU
 # add id code to data
 LMU$ID<-seq(1,nrow(LMU),1)
 
@@ -158,11 +158,12 @@ for(i in 1:nrow(LMU)){
   #   nprecipTS$wgtMean<-apply(as.matrix(nprecipTS[,1:(ncol(nprecipTS)-1)]), 1, function(x) weighted.mean(x, wgts))
     
   # weighted mean climate dataframe - try different windows
+    win<-6 # SPI/SPEI window
     moClimData<-cbind.data.frame(precipTS$date, precipTS$wgtMean, petTS$wgtMean)
-    moClimData$precip3mo<-movingFun(moClimData$`precipTS$wgtMean`, 3,type = "to", sum)
-    moClimData$pet3mo<-movingFun(moClimData$`petTS$wgtMean`, 3,type = "to", sum)
-    moClimData$SPI3<-spi(moClimData$`precipTS$wgtMean`, 3)$fitted  
-    moClimData$SPEI3<-spei(moClimData$`precipTS$wgtMean`- moClimData$`petTS$wgtMean`, 3)$fitted
+    moClimData$precip3mo<-movingFun(moClimData$`precipTS$wgtMean`, win,type = "to", sum)
+    moClimData$pet3mo<-movingFun(moClimData$`petTS$wgtMean`, win,type = "to", sum)
+    moClimData$SPI3<-spi(moClimData$`precipTS$wgtMean`, win)$fitted  
+    moClimData$SPEI3<-spei(moClimData$`precipTS$wgtMean`- moClimData$`petTS$wgtMean`, win)$fitted
     moClimData$month<-as.numeric(format(moClimData$`precipTS$date`, format="%m"))
     moClimData$year<-as.numeric(format(moClimData$`precipTS$date`, format="%Y"))
     
@@ -170,8 +171,11 @@ for(i in 1:nrow(LMU)){
     # SPI = 6, 
     allSeas<-moClimData[,c(8,9,6)]
     allSeas<-dcast(allSeas, year~month)
-    colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
-                         paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
+    #colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
+    #                     paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
+    # 6-month labels
+     colnames(allSeas)<-c("year",paste0(month.abb[8:12],"-",month.abb[1:5]),
+               paste0(month.abb[seq(1,12-5,1)],"-",month.abb[seq(1+5,12,1)]))
       # all subsets regressions 
       trimSeas<-subset(allSeas, year>=1984)
       trimSeas$rpms<-rpmsTS$wgtMean
@@ -198,8 +202,11 @@ for(i in 1:nrow(LMU)){
     # SPEI = 7
     allSeas<-moClimData[,c(8,9,7)]
     allSeas<-dcast(allSeas, year~month)
-    colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
-                         paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
+    #colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
+    #                     paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
+    # 6-month labels
+    colnames(allSeas)<-c("year",paste0(month.abb[8:12],"-",month.abb[1:5]),
+                         paste0(month.abb[seq(1,12-5,1)],"-",month.abb[seq(1+5,12,1)]))
       # all subsets regressions 
       trimSeas<-subset(allSeas, year>=1984)
       trimSeas$rpms<-rpmsTS$wgtMean
@@ -237,7 +244,7 @@ resultsFrame[c(1,2,4,6,8,10)] <- sapply(resultsFrame[c(1,2,4,6,8,10)],as.numeric
 resultsFrame[c(3,5,7,9)] <- lapply(resultsFrame[c(3,5,7,9)],factor)
 LMU@data<-merge(LMU@data, resultsFrame, by.x="ID", by.y="ID")
 # save into file for later use
-save(LMU, file="./results/AZNM_counties_rpms_gridmet_SPI_SPEI_results.Rdata")
+save(LMU, file="./results/AZ_LRU_smNDVI_gridmet_6mo_SPI_SPEI_results.Rdata")
 
 # plot of results by polygon
 load(file="./results/SW_CRA_rpms_gridmet_SPI_SPEI_results.Rdata")
@@ -248,8 +255,8 @@ library(RColorBrewer)
 plot(LMU);plot(LMU[55,], add=TRUE, border='red')
 
 # look at distributions of values
-plot(density(LMU@data$r2_1spi))
-lines(density(LMU@data$r2_1spei))
+plot(density(LMU@data$r2_2spi))
+lines(density(LMU@data$r2_2spei))
 # Shapiro-Wilk normality test for the differences
   shapiro.test(LMU@data$r2_2spi-LMU@data$r2_2spei) # => p-value >0.05, not different from normal
   t.test(LMU@data$r2_2spi, LMU@data$r2_2spei, paired = TRUE, alternative = "two.sided")

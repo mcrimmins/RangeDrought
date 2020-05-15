@@ -2,6 +2,7 @@
 # by NRCS LRUs, CRAs
 # MAC 04/17/2020
 # ordinal regression to predict drought categories
+# with higher order models and model validation
 
 library(raster)
 library(rgdal)
@@ -15,7 +16,6 @@ library(gtools)
 library(MASS)
 library(rms)
 library(pracma)
-library(broom)
 
 # set rasteroptions
 rasterOptions(progress = 'text')
@@ -90,13 +90,9 @@ resultsFrame = data.frame(ID=rep(0, nrow(LMU)),
                           rpmsCoverage=rep(0,nrow(LMU)),
                           r2_spi=rep(0,nrow(LMU)),
                           form_spi=rep(0,nrow(LMU)),
-                          spi_var1=rep(0,nrow(LMU)),
-                          spi_var2=rep(0,nrow(LMU)),
                           spi_pVal=rep(0,nrow(LMU)),
                           r2_spei=rep(0,nrow(LMU)),
                           form_spei=rep(0,nrow(LMU)),
-                          spei_var1=rep(0,nrow(LMU)),
-                          spei_var2=rep(0,nrow(LMU)),
                           spei_pVal=rep(0,nrow(LMU)))
                           
 # save monthly SPI and SPEI in lists
@@ -191,6 +187,7 @@ for(i in 1:nrow(LMU)){
       # all subsets regressions 
       trimSeas<-subset(allSeas, year>=1982) # change to 1982 for smNDVI or 1984 for RPMS
       trimSeas$rpms<-rpmsTS$wgtMean
+      trimSeas<-trimSeas[,-1]
       # create factors
       #trimSeas$rpms<- quantcut(trimSeas$rpms, c(0,0.03,0.06,0.11,0.21,0.30,1)) # USDM percentiles
        trimSeas$rpms<- quantcut(trimSeas$rpms, quantCuts)
@@ -204,10 +201,10 @@ for(i in 1:nrow(LMU)){
                             c(TRUE,FALSE), c(TRUE,FALSE),
                             c(TRUE,FALSE), c(TRUE,FALSE),
                             c(TRUE,FALSE), c(TRUE,FALSE),
-                            c(TRUE,FALSE), c(TRUE,FALSE),
-                            c(TRUE,FALSE))
+                            c(TRUE,FALSE), c(TRUE,FALSE))
+                            
       # find one and two factor models
-      regMat <- regMat[which(rowSums(regMat == "TRUE")<=2),]
+      regMat <- regMat[which(rowSums(regMat == "TRUE")<=3),]
       regMat <- regMat[-(dim(regMat)[1]),]
       names(regMat) <- colnames(trimSeas[1:ncol(trimSeas)-1])
       regressors <- colnames(trimSeas[1:ncol(trimSeas)-1])
@@ -232,14 +229,22 @@ for(i in 1:nrow(LMU)){
       r2$model<-unlist(nullToNA(model))
        r2$dev<-unlist(nullToNA(dev))
        r2$chiP<-unlist(nullToNA(chiP))
-      # vars for table 
-      r2_spi<-max(r2$r2value, na.rm = TRUE)
-      form_spi<-as.character(unlist(r2[which(r2$r2value==max(r2$r2value, na.rm = TRUE)),2])[[1]])
-      spi_var1<-unname(coef(allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]])[3]) # adjust to number of coeffs 3 for 3 cat, 6 USDM
-      spi_var2<-unname(coef(allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]])[4]) # adjust to number of coeffs 4 for 3 cat, 7 USDM
-      spi_pVal<-unlist(r2[which(r2$r2value==max(r2$r2value, na.rm = TRUE)),4])[[1]]
       # save model in list
-      bestSPImodels[[i]]<-allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]]
+      bestmodels<-allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]] 
+       # stepwise reduced model
+        tempModel<-fastbw(bestmodels, rule="p", sls = 0.05) # or AIC rule="p", sls = 0.05
+        if(length(tempModel$names.kept)==0){
+          tempModel<-bestmodels
+        }else{
+        tempModel<-lrm(as.formula(paste(c("rpms ~", tempModel$names.kept ),
+                collapse=" + ")), data=trimSeas, x=TRUE, y=TRUE, tol = 1e-6)
+        }
+      # vars for table 
+      r2_spi<-tempModel$stats[["R2"]]
+      form_spi<-tempModel$terms[[3]]
+      spi_pVal<-tempModel$stats[["P"]]
+      # save model in list
+      bestSPImodels[[i]]<-tempModel
       # clean up
       rm(allM, allSeas, trimSeas, regMat)
         
@@ -252,6 +257,7 @@ for(i in 1:nrow(LMU)){
       # all subsets regressions 
       trimSeas<-subset(allSeas, year>=1982) # change to 1982 for smNDVI or 1984 for RPMS
       trimSeas$rpms<-rpmsTS$wgtMean
+      trimSeas<-trimSeas[,-1]
       # create factors
       #trimSeas$rpms<- quantcut(trimSeas$rpms, c(0,0.03,0.06,0.11,0.21,0.30,1)) # USDM percentiles
        trimSeas$rpms<- quantcut(trimSeas$rpms, quantCuts)
@@ -265,10 +271,10 @@ for(i in 1:nrow(LMU)){
                             c(TRUE,FALSE), c(TRUE,FALSE),
                             c(TRUE,FALSE), c(TRUE,FALSE),
                             c(TRUE,FALSE), c(TRUE,FALSE),
-                            c(TRUE,FALSE), c(TRUE,FALSE),
-                            c(TRUE,FALSE))
+                            c(TRUE,FALSE), c(TRUE,FALSE))
+                        
       # find one and two factor models
-      regMat <- regMat[which(rowSums(regMat == "TRUE")<=2),]
+      regMat <- regMat[which(rowSums(regMat == "TRUE")<=3),]
       regMat <- regMat[-(dim(regMat)[1]),]
       names(regMat) <- colnames(trimSeas[1:ncol(trimSeas)-1])
       regressors <- colnames(trimSeas[1:ncol(trimSeas)-1])
@@ -293,20 +299,28 @@ for(i in 1:nrow(LMU)){
       r2$model<-unlist(nullToNA(model))
       r2$dev<-unlist(nullToNA(dev))
       r2$chiP<-unlist(nullToNA(chiP))
-      # vars for table 
-      r2_spei<-max(r2$r2value, na.rm = TRUE)
-      form_spei<-unlist(r2[which(r2$r2value==max(r2$r2value, na.rm = TRUE)),2])[[1]]
-      spei_var1<-unname(coef(allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]])[3]) # adjust to number of coeffs
-      spei_var2<-unname(coef(allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]])[4]) # adjust to number of coeffs
-      spei_pVal<-unlist(r2[which(r2$r2value==max(r2$r2value, na.rm = TRUE)),4])[[1]]
       # save model in list
-      bestSPEImodels[[i]]<-allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]]
+      bestmodels<-allM[[which(r2$r2value==max(r2$r2value, na.rm = TRUE))]] 
+      # stepwise reduced model
+      tempModel<-fastbw(bestmodels, rule="p", sls = 0.05) # or AIC rule="p", sls = 0.05 / rule="aic"
+      if(length(tempModel$names.kept)==0){
+        tempModel<-bestmodels
+      }else{
+        tempModel<-lrm(as.formula(paste(c("rpms ~", tempModel$names.kept ),
+                                        collapse=" + ")), data=trimSeas, x=TRUE, y=TRUE, tol = 1e-6)
+      }
+      # vars for table 
+      r2_spei<-tempModel$stats[["R2"]]
+      form_spei<-tempModel$terms[[3]]
+      spei_pVal<-tempModel$stats[["P"]]
+      # save model in list
+      bestSPEImodels[[i]]<-tempModel
       # clean up
       rm(allM, allSeas, trimSeas, regMat)
       
     # put results in dataframe
-    resultsFrame[i, ] = c(i,rpmsCoverage,r2_spi, paste0(form_spi, collapse=', ' ), unname(spi_var1), unname(spi_var2), spi_pVal,
-                          r2_spei, paste0(form_spei, collapse=', ' ), unname(spei_var1), unname(spei_var2), spei_pVal)
+    resultsFrame[i, ] = c(i,rpmsCoverage,r2_spi, paste0(form_spi, collapse=', ' ), spi_pVal,
+                          r2_spei, paste0(form_spei, collapse=', ' ), spei_pVal)
     
     print(i)
     
@@ -331,12 +345,12 @@ rpmsDataFrame = as.data.frame(do.call(cbind, rpmsData))
     rpmsDataFrame$date<-seq(as.Date("1982-12-01", "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="years")
   
 # merge with spatial dataframe
-resultsFrame[c(1,2,3,5,6,7,8,10,11,12)] <- sapply(resultsFrame[c(1,2,3,5,6,7,8,10,11,12)],as.numeric)
-resultsFrame[c(4,9)] <- lapply(resultsFrame[c(4,9)],factor)
+resultsFrame[c(1,2,3,5,6,8)] <- sapply(resultsFrame[c(1,2,3,5,6,8)],as.numeric)
+resultsFrame[c(4,7)] <- lapply(resultsFrame[c(4,7)],factor)
 LMU@data<-merge(LMU@data, resultsFrame, by.x="ID", by.y="ID")
 # save into file for later use
 save(LMU,rpmsData_detrend,spiDataFrame,speiDataFrame,rpmsDataFrame,bestSPEImodels,
-     bestSPImodels,file="./results/AZ_LRU_smNDVI_detrend_gridmet_SPI3_SPEI3_3cats_results.Rdata")
+     bestSPImodels,file="./results/AZ_LRU_smNDVI_detrend_stepwise_pval_gridmet_SPI3_SPEI3_3cats_results.Rdata")
 
 # plot of results by polygon
 load(file="./results/AZ_LMU_rpms_gridmet_SPI3_SPEI3_USDMcats_results.Rdata")
@@ -349,7 +363,7 @@ plot(LMU, add=TRUE); plot(LMU[47,], add=TRUE, border='red')
 
 # look at distributions of values
 plot(density(LMU@data$r2_spi))
-lines(density(LMU@data$r2_1spei))
+lines(density(LMU@data$r2_spei))
 # Shapiro-Wilk normality test for the differences
   shapiro.test(LMU@data$r2_2spi-LMU@data$r2_2spei) # => p-value >0.05, not different from normal
   t.test(LMU@data$r2_2spi, LMU@data$r2_2spei, paired = TRUE, alternative = "two.sided")

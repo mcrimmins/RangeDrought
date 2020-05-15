@@ -1,6 +1,7 @@
 # predict rpms/ndvi drought/climate categories using gridmet SPI/SPEI
 # need output from analyze_by_LRU_ordReg.R
 # MAC 05/01/2020
+# use with analyze_by_LRU_ordReg2.R, deals with variable number of coeffs, no year as predictor
 
 library(rms)
 library(MASS)
@@ -40,14 +41,8 @@ lmp <- function (modelobject) {
 #AZ_LRU<-spTransform(AZ_LRU, crs(AZ_CRA))
 # ----
 
-# results from analyze_by_LRU_ordReg.R
-#load("~/RProjects/RangeDrought/results/AZ_LMU_smNDVI_gridmet_SPI3_SPEI3_USDMcats_results.Rdata")
-#load("~/RProjects/RangeDrought/results/AZ_LMU_smNDVI_gridmet_SPI3_SPEI3_AbvBloCats_results.Rdata")
-#load("~/RProjects/RangeDrought/results/AZ_LMU_rpms_gridmet_SPI3_SPEI3_USDMcats_results.Rdata")
-#load("~/RProjects/RangeDrought/results/AZ_quarterDegGrid_smNDVI_gridmet_SPI3_SPEI3_USDMcats_results.Rdata")
-#load("~/RProjects/RangeDrought/results/AZ_quarterDegGrid_smNDVI_gridmet_SPI3_SPEI3_3cats_results.Rdata")
-#load("~/RProjects/RangeDrought/results/AZ_eighthDegGrid_smNDVI_gridmet_SPI3_SPEI3_3cats_results.Rdata")
-load("~/RProjects/RangeDrought/results/AZ_LRU_smNDVI_detrend_gridmet_SPI3_SPEI3_3cats_results.Rdata")
+# results from analyze_by_LRU_ordReg2.R
+load("~/RProjects/RangeDrought/results/AZ_LRU_smNDVI_detrend_stepwiseAIC_gridmet_SPI3_SPEI3_3cats_results.Rdata")
 
 # add month/year to climate dataframes
 spiDataFrame$month<-as.numeric(format(spiDataFrame$date, format="%m"))
@@ -92,7 +87,8 @@ for(i in 1:nrow(LMU)){
   
   # develop prediction model  
   periods<-unlist(str_split(str_remove_all(as.character(LMU@data$form_spi[i]),"[+,]")," "))
-    form<-as.formula(paste(c("rpms ~", periods[which(lapply(periods, nchar)!=0)]),collapse=" + "))
+  periods<-periods[which(lapply(periods, nchar)!=0)]
+    form<-as.formula(paste(c("rpms ~", periods),collapse=" + "))
     
     # error catch for model failures ----
     tryCatch({
@@ -126,26 +122,14 @@ for(i in 1:nrow(LMU)){
       coefs[[i]]<-coef(catModel)
     # create custom monthly time series
       newClim<-climData[,c(paste0("LRU-",i),"month","year")] 
-      # conditional switch if year is in formula
-      if(which(colnames(allSeas)==periods[2])==1){
-        # only var2 with year already in frame
+    # create time series for each var
+      for(j in 1:length(periods)){
         newClim$var1<-newClim[,1]
-        newClim$var1[which(newClim$month!=(which(colnames(allSeas)==periods[3])-1))]<-NA
+        newClim$var1[which(newClim$month!=(which(colnames(allSeas)==periods[j])-1))]<-NA
         newClim<-fill(newClim, var1)
-        colnames(newClim)[4]<-periods[3]
-      }else{
-        # var1
-        newClim$var1<-newClim[,1]
-        newClim$var1[which(newClim$month!=(which(colnames(allSeas)==periods[2])-1))]<-NA
-        newClim<-fill(newClim, var1)
-        colnames(newClim)[4]<-periods[2]
-        # var2
-        newClim$var1<-newClim[,1]
-        newClim$var1[which(newClim$month!=(which(colnames(allSeas)==periods[3])-1))]<-NA
-        newClim<-fill(newClim, var1)
-        colnames(newClim)[5]<-periods[3]
+        colnames(newClim)[j+3]<-periods[j]
       }
-    
+        
       # make predictions  
       predCats<-predict(catModel,newClim,type="probs")
           z<-apply(as.data.frame(predCats),1,which.max)
@@ -227,7 +211,7 @@ gs<-unlist(nullToNA(lapply(X = contList, FUN = `[[`, "gs")))
 n.obs <- sapply(coefs, length)
 seq.max <- seq_len(max(n.obs))
 coefsDF <- as.data.frame(t(sapply(coefs, "[", i = seq.max)))
-colnames(coefsDF)<-c("coef1","coef2")
+colnames(coefsDF)<-c("coef1","coef2","coef3")
 
 percCorrect =as.data.frame(do.call(rbind, percCorrect)); mean(percCorrect$V1, na.rm=TRUE)
 verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol=3, byrow=TRUE))
@@ -278,8 +262,8 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
          at=seq(-0.2, 0.2, 0.05),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
   
   # coefs
-  spplot(verifLMU, c("coef2"), 
-         main=list(label=paste0("Coef2 SPEI- detrended smNDVI/3 Cat"),
+  spplot(verifLMU, c("coef3"), 
+         main=list(label=paste0("Coef1 - detrended ACI-Step smNDVI/3 Cat"),
                    cex=1),scales=list(draw = TRUE),
          at=seq(-3.5, 3.5, 0.75),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
   
