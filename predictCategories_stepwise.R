@@ -12,6 +12,8 @@ library(tidyr)
 library(verification)
 library(rgdal)
 library(pracma)
+library(RColorBrewer)
+library(rasterVis)
 
 # replace empty with NA in list
 nullToNA <- function(x) {
@@ -42,7 +44,9 @@ lmp <- function (modelobject) {
 # ----
 
 # results from analyze_by_LRU_ordReg2.R
-load("~/RProjects/RangeDrought/results/AZ_LRU_smNDVI_detrend_stepwiseAIC_gridmet_SPI3_SPEI3_3cats_results.Rdata")
+#load("~/RProjects/RangeDrought/results/AZ_LRU_smNDVI_detrend_stepwiseAIC_gridmet_SPI3_SPEI3_3cats_results.Rdata")
+#load("~/RProjects/RangeDrought/results/AZ_LRU_smNDVI_detrend_stepwise_pval_gridmet_SPI3_SPEI3_3cats_results.Rdata")
+load("~/RProjects/RangeDrought/results/AZ_LRU_rpms_detrend_stepwise_pval_gridmet_SPI3_SPEI3_3cats_results.Rdata")
 
 # add month/year to climate dataframes
 spiDataFrame$month<-as.numeric(format(spiDataFrame$date, format="%m"))
@@ -57,13 +61,16 @@ allDroughtProb<-list()
 lowProb<-list()
 trends<-list()
 coefs<-list()
+lowProbHitMiss<-list()
 
 # swith to target climate dataset
-climData<-speiDataFrame # CHANGE TO SPI OR SPEI
+climData<-spiDataFrame # CHANGE TO SPI OR SPEI
 # switch to forecast type, needs to match dataset
 quantCuts<-c(0,0.33,0.66,1); quantNames<-c("Below","Normal","Above") # for 3 cat
 #quantCuts<-c(0,0.03,0.06,0.11,0.21,0.30,1); quantNames<- c("D4","D3","D2","D1","D0","No Drought") # for 3 cat
 
+# earliest year for RS data?
+yearRS<-1984
 
 # loop through all LMU
 for(i in 1:nrow(LMU)){
@@ -72,7 +79,7 @@ for(i in 1:nrow(LMU)){
   allSeas<-dcast(allSeas, year~month, value.var = paste0("LRU-",i))
     colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
                        paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
-  allSeas<-subset(allSeas, year>=1982)
+  allSeas<-subset(allSeas, year>=yearRS)
   allSeas$rpms<-rpmsDataFrame[,i]
   # detrend rs data
    tr<-lm(allSeas$rpms~seq(1,nrow(allSeas),1))
@@ -85,6 +92,13 @@ for(i in 1:nrow(LMU)){
   #  levels(allSeas$rpms) <- c("D4","D3","D2","D1","D0","No Drought")
     levels(allSeas$rpms) <- quantNames
   
+    # diag plots - not run ----
+    #par(mfrow=c(3,1))
+    #  plot(allSeas$year, allSeas$rpms)
+    #  plot(allSeas$year, allSeas$Feb_Apr, type='b', ylim=c(-2,2))
+    #  plot(allSeas$year, allSeas$Mar_May, type='b', ylim=c(-2,2))
+    # ----  
+      
   # develop prediction model  
   periods<-unlist(str_split(str_remove_all(as.character(LMU@data$form_spi[i]),"[+,]")," "))
   periods<-periods[which(lapply(periods, nchar)!=0)]
@@ -115,6 +129,7 @@ for(i in 1:nrow(LMU)){
         allDroughtProb[[i]]<-matrix(NA, nrow = nrow(climData), ncol = length(quantNames))
         lowProb[[i]]<-NA
         coefs[[i]]<-NA
+        lowProbHitMiss[[i]]<-NA
         #return()
     } else {
     # now it is safe to run the fit as we have handled an error above                  
@@ -137,11 +152,19 @@ for(i in 1:nrow(LMU)){
           newClim$catNames<-colnames(predCats)[z]
           newClim$probs<-apply(predCats,1,max)
           
+      # add in observed rs category for each year
+        newClim<-merge(newClim, allSeas[,c("year","rpms")], by="year", all.x=TRUE)
+      # find low category hits misses
+        newClim$bloHit<-ifelse(newClim$rpms==quantNames[1],
+                               ifelse(newClim$rpms==quantNames[1] & newClim$catNames==quantNames[1],"HIT","MISS"),"No Drought")
+              
       # store results in list for each LMU
           droughtCat[[i]]<-newClim$catNames
           droughtProb[[i]]<-newClim$probs
           allDroughtProb[[i]]<-predCats
           lowProb[[i]]<-predCats[,1]
+          lowProbHitMiss[[i]]<-newClim$bloHit
+          
     }
     print(i)
 }
@@ -158,7 +181,10 @@ droughtProbdf =as.data.frame(do.call(cbind, droughtProb))
 lowProbdf =as.data.frame(do.call(cbind, lowProb))
   colnames(lowProbdf)<-paste0("LRU-",seq(1,ncol(lowProbdf),1))
   lowProbdf$date<-seq(as.Date("1979-01-01", "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="months")
-  
+# get only below probs
+lowProbHitMissdf =as.data.frame(do.call(cbind, lowProbHitMiss))
+  colnames(lowProbHitMissdf)<-paste0("LRU-",seq(1,ncol(lowProbHitMissdf),1))
+  lowProbHitMissdf$date<-seq(as.Date("1979-01-01", "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="months")  
   
 # check drought category frequencies
 #table(unlist(droughtCatdf[,1:91]))
@@ -223,6 +249,9 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
   verifLMU<-LMU
   verifLMU@data<-cbind(verifLMU@data,verifList, percCorrect$V1,hss,pss,gs,coefsDF)
   
+# plot LMUs if needed
+  plot(LMU)
+  plot(LMU[29,], add=TRUE, col='red')
   
   #pal <- RColorBrewer::brewer.pal(n=9, 'OrRd')
   library(rasterVis)
@@ -262,8 +291,8 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
          at=seq(-0.2, 0.2, 0.05),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
   
   # coefs
-  spplot(verifLMU, c("coef3"), 
-         main=list(label=paste0("Coef1 - detrended ACI-Step smNDVI/3 Cat"),
+  spplot(verifLMU, c("coef1"), 
+         main=list(label=paste0("Coef1 - detrended pVal-Step smNDVI/3 Cat"),
                    cex=1),scales=list(draw = TRUE),
          at=seq(-3.5, 3.5, 0.75),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
   
@@ -324,12 +353,47 @@ mapCats<-LMU
     # plot drought cats
     dates<-seq(as.Date("1979.01.01", "%Y.%m.%d"),
                as.Date("2019.12.01", "%Y.%m.%d"), by="months")
-    dateIdx<-which(dates>=as.Date("1999-01-01","%Y-%m-%d") & dates<=as.Date("2000-12-01","%Y-%m-%d"))+(ncol(LMU@data)+1)
+    dateIdx<-which(dates>=as.Date("1998-01-01","%Y-%m-%d") & dates<=as.Date("2003-12-01","%Y-%m-%d"))+(ncol(LMU@data))
     library(RColorBrewer)
     library(rasterVis)
-    spplot(mapLo, dateIdx, 
-           main=list(label="Probability of being in lowest tercile",cex=1),scales=list(draw = TRUE),
-           at=seq(0.3, 1, 0.1),col.regions = (brewer.pal(n = 9, 'YlOrRd')),as.table=TRUE)
+    p<-spplot(mapLo, dateIdx, par.settings = list(strip.background=list(col="lightgrey")),
+           main=list(label="Probability of being in lowest tercile - 3mo SPI predicts max-NDVI",cex=1),scales=list(draw = FALSE),
+           at=seq(0.3, 1, 0.1),col.regions = (brewer.pal(n = 9, 'Oranges')),as.table=TRUE, layout=c(12,6))+
+      layer(sp.polygons(mapLo[which(mapLo@data$spi_pVal>=0.05),], fill='grey'))
     
-       # layer_(sp.polygons(TestData, fill='black')) # separate layer of polygons to mask
-    
+    # plot to png
+     png("/home/crimmins/RProjects/RangeDrought/figs/prob_lowest_tercile_SPI3mo_maxNDVI.png", width = 21, height = 15, units = "in", res = 300L)
+     #grid.newpage()
+     print(p, newpage = FALSE)
+     dev.off()
+     
+# hit or miss of monthly lowest tercile probability
+     # MAP only lowest category probabilities
+     temp<-as.data.frame(t(lowProbHitMissdf[,1:91]))
+     temp[] <- lapply(temp, factor, 
+                      levels=c("HIT","MISS","No Drought"), 
+                      labels = c("HIT","MISS","No Drought"))
+     mapLo<-LMU
+     #colnames(temp)<-paste0("X",droughtCatdf[,92])
+     mapLo@data<-cbind.data.frame(LMU@data,temp)
+     dateNames<-format(seq(as.Date("1979.01.01", "%Y.%m.%d"),
+                           as.Date("2019.12.01", "%Y.%m.%d"), by="months"),"%m.%d.%Y")
+     colnames(mapLo@data)[(ncol(LMU@data)+1):(ncol(temp)+(ncol(LMU@data)))]<-paste0("X",dateNames)
+     
+     # plot drought cats
+     dates<-seq(as.Date("1979.01.01", "%Y.%m.%d"),
+                as.Date("2019.12.01", "%Y.%m.%d"), by="months")
+     dateIdx<-which(dates>=as.Date("2015-01-01","%Y-%m-%d") & dates<=as.Date("2019-12-01","%Y-%m-%d"))+(ncol(LMU@data))
+
+     p<-spplot(mapLo, dateIdx, par.settings = list(strip.background=list(col="lightgrey")),
+               main=list(label="Hit/Miss Below Outlook - 3mo SPI predicts max-NDVI",cex=1),scales=list(draw = FALSE),
+               col.regions = c("green","red","white"),as.table=TRUE, layout=c(12,5))+
+       layer(sp.polygons(mapLo[which(mapLo@data$spi_pVal>=0.05),], fill='grey'))
+     
+     # plot to png
+     png("/home/crimmins/RProjects/RangeDrought/figs/hit_miss_lowest_tercile_SPI3mo_maxNDVI_2015_2019.png", width = 21, height = 15, units = "in", res = 300L)
+     #grid.newpage()
+     print(p, newpage = FALSE)
+     dev.off()    
+     
+   

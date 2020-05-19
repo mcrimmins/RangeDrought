@@ -32,7 +32,7 @@ nullToNA <- function(x) {
 
 # load and process grids ----
   # production
-  #rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/AZNM_RPMS_8419_WGS84.grd")
+  rpmsSW<-stack("/scratch/crimmins/USDA_NPP/v2019/AZNM_RPMS_8419_WGS84.grd")
   # monthly gridmet, orig res
   precip<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/SWUS_gridmet_monthly_sum_precip_1979_2019.grd")
   pet<-stack("/scratch/crimmins/gridmet/update_Aug2019/processed/SWUS_gridmet_monthly_sum_pet_1979_2019.grd")
@@ -43,10 +43,10 @@ nullToNA <- function(x) {
   # nprecip<-crop(nClimPrecip, extent(precip))  
 
   # try out smoothed NDVI
-     smNDVI<-stack("/scratch/crimmins/vhi/processed/ANNUAL_MAX_smNDVI_complete_1982-2019_SWUS.grd") 
-     smNDVI<-resample(smNDVI, precip[[1]])
+    # smNDVI<-stack("/scratch/crimmins/vhi/processed/ANNUAL_MAX_smNDVI_complete_1982-2019_SWUS.grd") 
+    # smNDVI<-resample(smNDVI, precip[[1]])
      #smNDVI<-smNDVI[[3:38]]
-     rpmsSW<-smNDVI      
+    # rpmsSW<-smNDVI      
 
   # create RPMS NA mask
   maskRPMS<-calc(rpmsSW, sum)
@@ -108,6 +108,9 @@ quantCuts<-c(0,0.33,0.66,1); quantNames<-c("Below","Normal","Above") # for 3 cat
 #quantCuts<-c(0,0.33,1); quantNames<-c("Below","Normal-Above") # for 2 cat
 #quantCuts<-c(0,0.03,0.06,0.11,0.21,0.30,1); quantNames<- c("D4","D3","D2","D1","D0","No Drought") # for 3 cat
 
+# earliest year for RS data?
+yearRS<-1984
+
 
 # Start the clock!
 ptm <- proc.time()
@@ -130,7 +133,7 @@ for(i in 1:nrow(LMU)){
   # format time series data frames
   rpmsTS<-as.data.frame(t(rpmsTS))
   rpmsTS = as.data.frame(rpmsTS[-1,]) # ONLY IF MULTIPLE POLYGONS
-  rpmsTS$date<-seq(as.Date("1982-12-01", "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="years") # 1982 or 1984
+  rpmsTS$date<-seq(as.Date(paste0(yearRS,"-12-01"), "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="years") # 1982 or 1984
     # weighted mean of polygons by area
     #wgts<-poly@data[["AREA"]]/sum(poly@data[["AREA"]])
     #rpmsTS$wgtMean<-apply(as.matrix(rpmsTS[,1:(ncol(rpmsTS)-1)]), 1, function(x) weighted.mean(x, wgts))
@@ -185,7 +188,7 @@ for(i in 1:nrow(LMU)){
     colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
                          paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
       # all subsets regressions 
-      trimSeas<-subset(allSeas, year>=1982) # change to 1982 for smNDVI or 1984 for RPMS
+      trimSeas<-subset(allSeas, year>=yearRS) # change to 1982 for smNDVI or 1984 for RPMS
       trimSeas$rpms<-rpmsTS$wgtMean
       trimSeas<-trimSeas[,-1]
       # create factors
@@ -255,7 +258,7 @@ for(i in 1:nrow(LMU)){
       colnames(allSeas)<-c("year",paste0(month.abb[11],"_",month.abb[1]),paste0(month.abb[12],"_",month.abb[2]),
                            paste0(month.abb[seq(1,12-2,1)],"_",month.abb[seq(1+2,12,1)]))
       # all subsets regressions 
-      trimSeas<-subset(allSeas, year>=1982) # change to 1982 for smNDVI or 1984 for RPMS
+      trimSeas<-subset(allSeas, year>=yearRS) # change to 1982 for smNDVI or 1984 for RPMS
       trimSeas$rpms<-rpmsTS$wgtMean
       trimSeas<-trimSeas[,-1]
       # create factors
@@ -342,7 +345,7 @@ speiDataFrame =as.data.frame(do.call(cbind, speiData))
     speiDataFrame$date<-seq(as.Date("1979-01-01", "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="months")
 rpmsDataFrame = as.data.frame(do.call(cbind, rpmsData))
   colnames(rpmsDataFrame)<-paste0("LRU-",seq(1,ncol(rpmsDataFrame),1))
-    rpmsDataFrame$date<-seq(as.Date("1982-12-01", "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="years")
+    rpmsDataFrame$date<-seq(as.Date(paste0(yearRS,"-12-01"), "%Y-%m-%d"), as.Date("2019-12-01", "%Y-%m-%d"), by="years")
   
 # merge with spatial dataframe
 resultsFrame[c(1,2,3,5,6,8)] <- sapply(resultsFrame[c(1,2,3,5,6,8)],as.numeric)
