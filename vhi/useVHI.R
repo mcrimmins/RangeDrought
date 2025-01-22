@@ -107,4 +107,75 @@ library(dplyr)
            main=list(label="Avg Max DOY (smNDVI)",cex=1),
            scales=list(draw = TRUE),  col.regions = pal)
     
+  # cluster on maxNDVI timing
+    library(raster)
+    library(RStoolbox)
+    library(rasterVis)
+    library(rgdal)
+    
+    # set rasteroptions
+    rasterOptions(progress = 'text')
+    
+    # AZ LRU from Emilio
+    # ---- load NRCS CRAs for SW
+    AZ_CRA <- readOGR(dsn = "./shapes/AZ_CRA/soils", layer = "cra_a_az")
+    AZ_LRU<-readOGR(dsn = "./shapes/AZ_LRU", layer = "mlra_a_az")
+    AZ_LRU<-spTransform(AZ_LRU, crs(AZ_CRA))
+    
+    # load stack
+    whenMaxNDVI<-stack('/scratch/crimmins/vhi/processed/ANNUAL_MAX_timing_smNDVI_complete_1982-2019_SWUS.grd')
+    whenMaxNDVI<-crop(whenMaxNDVI, extent(AZ_LRU))
+    # average max timing
+    avgMaxTiming<-calc(whenMaxNDVI, mean)
+    
+    
+    
+    # lat lon grids
+    # lonGrid <- init(whenMaxNDVI, 'x')
+    # latGrid <- init(whenMaxNDVI, 'y')
+    # whenMaxNDVI<-stack(whenMaxNDVI,lonGrid,latGrid)
+     
+    # rsToolbox options
+    rsOpts(verbose=TRUE)
+    clusterN<-12
+    #unC <- unsuperClass(avgMaxTiming, nSamples = 1000, nClasses = clusterN, nStarts = 25, nIter = 1000, norm = FALSE) # or allGDD
+    unC <- unsuperClass(whenMaxNDVI, nSamples = 1000, nClasses = clusterN, nStarts = 25, nIter = 1000, norm = FALSE) # or allGDD
+    
+    # more colors
+    # https://stackoverflow.com/questions/15282580/how-to-generate-a-number-of-most-distinctive-colors-in-r
+    qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+    col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+    darkcols<-sample(col_vector, clusterN)
+    
+    # smooth or clump?
+    #test <- focal(classMap, w=matrix(1, 7, 7), fun=min)
+    # test<-clump(classMap)
+    
+    #cluster12 <- readShapePoly("./mapFiles/cluster12poly")
+    
+    classMap<-as.factor(unC$map)
+    rat <- levels(classMap)[[1]]
+    # cluster names
+    #rat[["cluster"]]<-c("N Rockies","Northeast","S Plains","S Rockies","N Plains",
+    #
+    #                    "Midwest","Southeast","Mid Atlantic","Upper Midwest","Southwest",
+    #                    "Gulf Coast","Pacific NW")
+    rat[["cluster"]] <- as.character(seq(1, clusterN, by=1))
+    levels(classMap) <- rat 
+    
+    # create polygon shapefile
+    #library(rgdal)
+    #library(rgeos)
+    #library(maptools)
+    # clusterpoly<-rasterToPolygons(classMap, n=4, na.rm=TRUE, digits=12, dissolve=TRUE)
+    # proj4string(clusterpoly) <- "+proj=longlat +datum=WGS84"
+    # writeOGR(clusterpoly, ".", "./mapFiles/cluster12final", driver="ESRI Shapefile")
+    
+    # plot classified map
+    levelplot(classMap, col.regions=darkcols, par.settings=list(panel.background=list(col="white")),
+              margin=FALSE, main="smNDVI Max NDVI timing - kmeans clusters")+
+      layer(sp.polygons(AZ_LRU))
+      
+    
+    
   

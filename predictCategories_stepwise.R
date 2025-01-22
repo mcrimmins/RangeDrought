@@ -64,7 +64,7 @@ coefs<-list()
 lowProbHitMiss<-list()
 
 # swith to target climate dataset
-climData<-spiDataFrame # CHANGE TO SPI OR SPEI
+climData<-speiDataFrame # CHANGE TO SPI OR SPEI
 # switch to forecast type, needs to match dataset
 quantCuts<-c(0,0.33,0.66,1); quantNames<-c("Below","Normal","Above") # for 3 cat
 #quantCuts<-c(0,0.03,0.06,0.11,0.21,0.30,1); quantNames<- c("D4","D3","D2","D1","D0","No Drought") # for 3 cat
@@ -250,11 +250,15 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
   verifLMU@data<-cbind(verifLMU@data,verifList, percCorrect$V1,hss,pss,gs,coefsDF)
   
 # plot LMUs if needed
-  plot(LMU)
-  plot(LMU[29,], add=TRUE, col='red')
+#  plot(LMU)
+#  plot(LMU[29,], add=TRUE, col='red')
+ 
+# mask polygons
+  maskPoly<-verifLMU
+  maskPoly<-maskPoly[which(maskPoly@data$spei_pVal>=0.05 | maskPoly@data$rpmsCoverage<=30),]
   
+   
   #pal <- RColorBrewer::brewer.pal(n=9, 'OrRd')
-  library(rasterVis)
   pal <- RColorBrewer::brewer.pal(n=9, 'OrRd')
   spplot(verifLMU, c("rps"), 
          main=list(label=paste0("Rank Probability Score - NDVI/SPI/3 cat (",round(mean(verifList$rps, na.rm = TRUE),2),")"),
@@ -262,15 +266,16 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
          at=seq(0, 0.5, 0.1),col.regions = pal)
   
   spplot(verifLMU, c("r2_spei"), 
-         main=list(label=paste0("R2 - NDVI/SPI/3 cat (",round(mean(LMU@data$r2_spei, na.rm = TRUE),2),")"),
+         main=list(label=paste0("R2 - RPMS/SPEI/3 cat (",round(mean(LMU@data$r2_spei, na.rm = TRUE),2),")"),
                    cex=1),scales=list(draw = TRUE),
-         at=seq(0, 0.9, 0.1),col.regions = pal)
+         at=seq(0, 0.9, 0.1),col.regions = pal)+
+    layer(sp.polygons(maskPoly, fill="grey"))
  
   spplot(verifLMU, c("rpss"), 
-         main=list(label=paste0("Rank Probability Skill Score - NDVI/SPEI/3 Cat (",round(mean(verifList$rpss, na.rm = TRUE),2),")"),
+         main=list(label=paste0("Rank Probability Skill Score - RMPS/SPEI/3 Cat (",round(mean(verifList$rpss, na.rm = TRUE),2),")"),
                    cex=1),scales=list(draw = TRUE),
          at=seq(-1, 1, 0.2),col.regions = rev(brewer.pal(n = 10, 'RdBu')))+
-    layer(sp.polygons(AZ_LRU, line="black"))
+    layer(sp.polygons(maskPoly, fill="grey"))
   
   pal <- RColorBrewer::brewer.pal(n=9, 'OrRd')
   spplot(verifLMU, c("percCorrect$V1"), 
@@ -279,9 +284,11 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
          at=seq(0, 90, 10),col.regions = pal)
   
   spplot(verifLMU, c("hss"), 
-         main=list(label=paste0("Heidke Skill Score - smNDVI/SPEI/3 Cat (",round(mean(hss, na.rm = TRUE),2),")"),
+         main=list(label=paste0("Heidke Skill Score - RPMS/SPEI/3 Cat (",round(mean(hss, na.rm = TRUE),2),")"),
                    cex=1),scales=list(draw = TRUE),
-         at=seq(-1, 1, 0.2),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
+         at=seq(-1, 1, 0.2),col.regions = rev(brewer.pal(n = 10, 'RdBu')))+
+    layer(sp.polygons(maskPoly, fill="grey"))
+    
 
   speirpss<-verifLMU@data$rpss
   verifLMU@data$rpssdiff<-verifLMU@data$rpss-speirpss
@@ -296,6 +303,14 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
                    cex=1),scales=list(draw = TRUE),
          at=seq(-3.5, 3.5, 0.75),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
   
+  # random colors -- https://stackoverflow.com/questions/15282580/how-to-generate-a-number-of-most-distinctive-colors-in-r
+  qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+  col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+  #
+  spplot(LMU, c("form_spei"), col.regions=sample(col_vector, length(levels(LMU$form_spi))),
+         main=list(label="Best Regression to predict RPMS based on 3mo-SPEI",cex=1),scales=list(draw = TRUE))
+
+  
   
 # map trends in rs
   slope<-unlist(nullToNA(lapply(X = trends, FUN = `[[`, 1)))
@@ -303,9 +318,9 @@ verifList <-as.data.frame(matrix(unlist(verifList), nrow=length(verifList), ncol
   slope[which(pval>0.05)]<-NA  
   verifLMU@data<-cbind(verifLMU@data, slope)
   spplot(verifLMU, c("slope"), 
-         main=list(label="Significant slopes in smNDVI data",
+         main=list(label="Significant slopes in RMPS data",
                    cex=1),scales=list(draw = TRUE),
-         at=seq(-0.005, 0.005, 0.001),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
+         at=seq(-20, 20, 5),col.regions = rev(brewer.pal(n = 10, 'RdBu')))
 
 # different models for SPI/SPEI?
 verifLMU@data$diffModels<-as.factor(mapply(identical, as.character(verifLMU@data$form_spi), as.character(verifLMU@data$form_spei)))
@@ -333,13 +348,21 @@ mapCats<-LMU
   # plot drought cats
   dates<-seq(as.Date("1979.01.01", "%Y.%m.%d"),
            as.Date("2019.12.01", "%Y.%m.%d"), by="months")
-  dateIdx<-which(dates>=as.Date("2000-01-01","%Y-%m-%d") & dates<=as.Date("2000-12-01","%Y-%m-%d"))+(ncol(LMU@data)+1)
+  dateIdx<-which(dates>=as.Date("2017-01-01","%Y-%m-%d") & dates<=as.Date("2019-12-01","%Y-%m-%d"))+(ncol(LMU@data))
   library(RColorBrewer)
   my.palette <- brewer.pal(n = 3, name = "RdYlGn")
   my.palette<-c("#91CF60","#FC8D59","#FFFFBF")
-    spplot(mapCats, dateIdx, 
-         main=list(label="Drought Categories",cex=1),scales=list(draw = TRUE), col.regions=my.palette)
-  
+    p<-spplot(mapCats, dateIdx, par.settings = list(strip.background=list(col="lightgrey")),as.table=TRUE, layout=c(12,3),
+         main=list(label="RPMS Tercile Categories - 3mo SPEI model",cex=1),scales=list(draw = FALSE), col.regions=my.palette)+
+      layer(sp.polygons(maskPoly, fill='grey'))
+    # plot to png
+    png("/home/crimmins/RProjects/RangeDrought/figs/Predicted_tercile_SPEI3mo_RPMS.png", width = 21, height = 10, units = "in", res = 300L)
+    #grid.newpage()
+    print(p, newpage = FALSE)
+    dev.off()
+    
+    
+    
  
 # MAP only lowest category probabilities
     temp<-as.data.frame(t(lowProbdf[,1:91]))
@@ -353,16 +376,17 @@ mapCats<-LMU
     # plot drought cats
     dates<-seq(as.Date("1979.01.01", "%Y.%m.%d"),
                as.Date("2019.12.01", "%Y.%m.%d"), by="months")
-    dateIdx<-which(dates>=as.Date("1998-01-01","%Y-%m-%d") & dates<=as.Date("2003-12-01","%Y-%m-%d"))+(ncol(LMU@data))
+    dateIdx<-which(dates>=as.Date("2017-01-01","%Y-%m-%d") & dates<=as.Date("2019-12-01","%Y-%m-%d"))+(ncol(LMU@data))
     library(RColorBrewer)
     library(rasterVis)
     p<-spplot(mapLo, dateIdx, par.settings = list(strip.background=list(col="lightgrey")),
-           main=list(label="Probability of being in lowest tercile - 3mo SPI predicts max-NDVI",cex=1),scales=list(draw = FALSE),
-           at=seq(0.3, 1, 0.1),col.regions = (brewer.pal(n = 9, 'Oranges')),as.table=TRUE, layout=c(12,6))+
-      layer(sp.polygons(mapLo[which(mapLo@data$spi_pVal>=0.05),], fill='grey'))
-    
+           main=list(label="Probability of being in lowest tercile - 3mo SPEI predicts RPMS",cex=1),scales=list(draw = FALSE),
+           at=seq(0.3, 1, 0.1),col.regions = (brewer.pal(n = 9, 'Oranges')),as.table=TRUE, layout=c(12,3))+
+      #layer(sp.polygons(mapLo[which(mapLo@data$spi_pVal>=0.05),], fill='grey'))
+      layer(sp.polygons(maskPoly, fill='grey'))
+      
     # plot to png
-     png("/home/crimmins/RProjects/RangeDrought/figs/prob_lowest_tercile_SPI3mo_maxNDVI.png", width = 21, height = 15, units = "in", res = 300L)
+     png("/home/crimmins/RProjects/RangeDrought/figs/prob_lowest_tercile_SPEI3mo_RPMS.png", width = 21, height = 10, units = "in", res = 300L)
      #grid.newpage()
      print(p, newpage = FALSE)
      dev.off()
@@ -383,15 +407,16 @@ mapCats<-LMU
      # plot drought cats
      dates<-seq(as.Date("1979.01.01", "%Y.%m.%d"),
                 as.Date("2019.12.01", "%Y.%m.%d"), by="months")
-     dateIdx<-which(dates>=as.Date("2015-01-01","%Y-%m-%d") & dates<=as.Date("2019-12-01","%Y-%m-%d"))+(ncol(LMU@data))
+     dateIdx<-which(dates>=as.Date("2017-01-01","%Y-%m-%d") & dates<=as.Date("2019-12-01","%Y-%m-%d"))+(ncol(LMU@data))
 
      p<-spplot(mapLo, dateIdx, par.settings = list(strip.background=list(col="lightgrey")),
                main=list(label="Hit/Miss Below Outlook - 3mo SPI predicts max-NDVI",cex=1),scales=list(draw = FALSE),
-               col.regions = c("green","red","white"),as.table=TRUE, layout=c(12,5))+
-       layer(sp.polygons(mapLo[which(mapLo@data$spi_pVal>=0.05),], fill='grey'))
-     
+               col.regions = c("green","red","white"),as.table=TRUE, layout=c(12,3))+
+       #layer(sp.polygons(mapLo[which(mapLo@data$spi_pVal>=0.05),], fill='grey'))
+       layer(sp.polygons(maskPoly, fill='grey'))
+       
      # plot to png
-     png("/home/crimmins/RProjects/RangeDrought/figs/hit_miss_lowest_tercile_SPI3mo_maxNDVI_2015_2019.png", width = 21, height = 15, units = "in", res = 300L)
+     png("/home/crimmins/RProjects/RangeDrought/figs/hit_miss_lowest_tercile_SPEI3mo_RPMS.png", width = 21, height = 10, units = "in", res = 300L)
      #grid.newpage()
      print(p, newpage = FALSE)
      dev.off()    

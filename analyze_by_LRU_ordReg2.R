@@ -353,10 +353,10 @@ resultsFrame[c(4,7)] <- lapply(resultsFrame[c(4,7)],factor)
 LMU@data<-merge(LMU@data, resultsFrame, by.x="ID", by.y="ID")
 # save into file for later use
 save(LMU,rpmsData_detrend,spiDataFrame,speiDataFrame,rpmsDataFrame,bestSPEImodels,
-     bestSPImodels,file="./results/AZ_LRU_smNDVI_detrend_stepwise_pval_gridmet_SPI3_SPEI3_3cats_results.Rdata")
+     bestSPImodels,file="./results/AZ_LRU_rpms_detrend_stepwise_pval_gridmet_SPI3_SPEI3_3cats_results.Rdata")
 
 # plot of results by polygon
-load(file="./results/AZ_LMU_rpms_gridmet_SPI3_SPEI3_USDMcats_results.Rdata")
+load("~/RProjects/RangeDrought/results/AZ_LRU_rpms_detrend_stepwise_pval_gridmet_SPI3_SPEI3_3cats_results.Rdata")
 library(rasterVis)
 library(RColorBrewer)
 
